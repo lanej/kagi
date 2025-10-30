@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"strings"
 
@@ -36,6 +39,7 @@ type Command struct {
 	query      string
 	KagiAPIKey string
 	cacheDir   string
+	verbose    bool
 	flags      flag.FlagSet
 }
 
@@ -46,6 +50,7 @@ func newCommand(args []string) (command Command, err error) {
 	var (
 		kagiAPIKey = flags.String("kagi_api_key", os.Getenv("KAGI_API_KEY"), "API key to use with the Kagi FastGPT API")
 		cacheDir   = flags.String("cache_dir", "", "Directory to cache API responses in.  If not set, responses will not be cached.")
+		verbose    = flags.Bool("verbose", false, "Enable verbose logging")
 	)
 
 	if len(os.Args) == 0 {
@@ -56,17 +61,35 @@ func newCommand(args []string) (command Command, err error) {
 		return command, fmt.Errorf("failed to parse flags: %w", errors.Wrap(err, errUsage.Error()))
 	}
 
-	if flags.NArg() == 0 {
-		command.query = strings.Join(flags.Args(), " ")
-	}
-
 	if kagiAPIKey == nil || *kagiAPIKey == "" {
 		return command, errMissingAPIKey
 	}
 
 	command.KagiAPIKey = *kagiAPIKey
 	command.cacheDir = *cacheDir
-	command.query = strings.Join(flags.Args(), " ")
+	command.verbose = *verbose
+
+	// If no arguments provided, read from stdin
+	if flags.NArg() == 0 {
+		// Check if stdin is a terminal (interactive) to show a prompt
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) != 0 {
+			fmt.Fprint(os.Stderr, "Enter your query (Ctrl+D when done):\n")
+		}
+
+		// Read from stdin (works for both piped input and interactive terminal)
+		reader := bufio.NewReader(os.Stdin)
+		input, err := io.ReadAll(reader)
+		if err != nil {
+			return command, fmt.Errorf("failed to read from stdin: %w", err)
+		}
+		command.query = strings.TrimSpace(string(input))
+		if command.query == "" {
+			return command, errUsage
+		}
+	} else {
+		command.query = strings.Join(flags.Args(), " ")
+	}
 
 	return command, nil
 }
@@ -80,7 +103,7 @@ func invoke(command Command) error {
 		Cache:     true,
 	}
 	// Log the request if verbose is enabled
-	if verbose {
+	if command.verbose {
 		log.Printf("Request: %+v\n", req)
 	}
 
