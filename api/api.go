@@ -58,12 +58,15 @@ type FastGPTRequest struct {
 }
 
 func (c *Client) QueryFastGPT(query string) (*FastGPTResponse, error) {
-	var buf bytes.Buffer
-	req := FastGPTRequest{
+	return c.FastGPTRequest(FastGPTRequest{
 		Query:     query,
 		WebSearch: true,
 		Cache:     true,
-	}
+	})
+}
+
+func (c *Client) FastGPTRequest(req FastGPTRequest) (*FastGPTResponse, error) {
+	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(req); err != nil {
 		return nil, fmt.Errorf("failed to encode request: %w", err)
 	}
